@@ -36,7 +36,7 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 //    return depth;
 //}
 
-
+// future
 __global__ void voxelizedDiff(BYTE* g_data, unsigned int* g_dataSrc, float frontDepth, float backDepth, unsigned int size, unsigned int scaler) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -108,6 +108,12 @@ __global__ void voxelizedSample_kernel(BYTE* g_data, BYTE* g_dataSrc, unsigned i
     
 }
 
+// Lv4 summary to lv3 support 2048 to 256
+__global__ void voxelizedSample3D_kernel(BYTE* g_data, BYTE* g_dataSrc, unsigned int size, unsigned int scaler) {
+    g_data[threadIdx.x] = 0;
+}
+
+
 #define CHECK_ERR(status)   \
     if (cudaStatus != status) {    \
         fprintf(stderr, "cudaSetDevice failed!  errorCode: %i ?", (int)status); \
@@ -130,6 +136,8 @@ static int targetBufferFree = 0;
 static int originBufferInUse = 0;
 static int originBufferFree = 0;
 static _Mtx_t bufferMtx;
+
+static int nThreadNum = 16;
 
 void lockBufferMtx() {
     _Mtx_lock(bufferMtx);
@@ -189,7 +197,7 @@ BYTE* getOriginBuffer(BYTE** ptr) {
 }
 
 extern "C" {
-    DLLEXPORT void Init(unsigned int targetBufferPoolSize, unsigned int originBufferPoolSize,  unsigned int targetSize, unsigned int scaler = SCALER) {
+    DLLEXPORT void Init(unsigned int targetBufferPoolSize, unsigned int originBufferPoolSize,  unsigned int targetSize, unsigned int scaler = SCALER, unsigned int threadNum = 16) {
         _Mtx_init(&bufferMtx, 0);
         TARGET_BUFFER_POOL_SIZE = targetBufferPoolSize;
         ORIGIN_BUFFER_POOL_SIZE = originBufferPoolSize;
@@ -208,6 +216,7 @@ extern "C" {
         }
         targetBufferFree = targetBufferPoolSize;
         originBufferFree = originBufferPoolSize;
+        nThreadNum = threadNum;
         memPoolEnabled = true;
     }
 
@@ -246,14 +255,17 @@ extern "C" {
         }
         
 
-        dim3 blocks = dim3(128, 128);
-        //blocks = dim3(256);
-        dim3 threads = dim3(targetSize / blocks.x, targetSize / blocks.y);
-        //threads = dim3(256);
+        unsigned int threadNum = min(nThreadNum, targetSize);
+        dim3 threads = dim3(threadNum, threadNum);
+        dim3 blocks = dim3(targetSize / threads.x, targetSize / threads.y);
+
         // create cuda event handles
         cudaEvent_t start, stop;
         checkCudaErrors(cudaEventCreate(&start));
         checkCudaErrors(cudaEventCreate(&stop));
+
+        cudaStream_t streamId;
+        cudaStreamCreate(&streamId);
 
         StopWatchInterface* timer = NULL;
         sdkCreateTimer(&timer);
@@ -262,24 +274,35 @@ extern "C" {
         float gpu_time = 0.0f;
         // asynchronously issue work to the GPU (all to stream 0)
         sdkStartTimer(&timer);
-        cudaEventRecord(start, 0);
+        cudaEventRecord(start, streamId);
 
-        cudaStatus = cudaMemcpyAsync(dev_originTex, originTex, targetSize * targetSize * scaler * scaler, cudaMemcpyHostToDevice);
+        cudaStatus = cudaMemcpyAsync(dev_originTex, originTex, targetSize * targetSize * scaler * scaler, cudaMemcpyHostToDevice, streamId);
+
         CHECK_ERR(cudaStatus);
-        voxelizedSample_kernel << <blocks, threads, 0, 0>> > (dev_targetTex, dev_originTex, targetSize, scaler);
-        cudaStatus = cudaMemcpyAsync(targetTex, dev_targetTex, targetSize * targetSize, cudaMemcpyDeviceToHost);
+        voxelizedSample_kernel << <blocks, threads, 0, streamId >> > (dev_targetTex, dev_originTex, targetSize, scaler);
         CHECK_ERR(cudaStatus);
-        cudaEventRecord(stop, 0);
+
+        cudaStatus = cudaMemcpyAsync(targetTex, dev_targetTex, targetSize * targetSize, cudaMemcpyDeviceToHost, streamId);
+        cudaEventRecord(stop, streamId);
         sdkStopTimer(&timer);
 
+        //cudaStatus = cudaDeviceSynchronize();
+        
         // have CPU do some work while waiting for stage 1 to finish
         unsigned long int counter = 0;
 
-        while (cudaEventQuery(stop) == cudaErrorNotReady)
-        {
+        //while (cudaEventQuery(stop) == cudaErrorNotReady)
+        //{
+        //    counter++;
+        //}
+        //cudaStatus = cudaEventSynchronize(stop);
+        
+        while (cudaStreamQuery(streamId) != cudaSuccess) {
             counter++;
         }
-
+        // cudaStreamWaitEvent(streamId, stop, 0);
+        // cudaStreamSynchronize(streamId);
+        cudaStreamDestroy(streamId);
         checkCudaErrors(cudaEventElapsedTime(&gpu_time, start, stop));
 
         // print the cpu and gpu times
@@ -331,7 +354,22 @@ extern "C" {
 
 }
 
-int main1() {
+void printDeviceInfo() {
+    int deviceCount;
+    cudaGetDeviceCount(&deviceCount);
+    int device;
+    for (device = 0; device < deviceCount; ++device) {
+        cudaDeviceProp deviceProp;
+        cudaGetDeviceProperties(&deviceProp, device);
+        printf("Device %d has compute capability %d.%d.\n",
+            device, deviceProp.major, deviceProp.minor);
+    }
+}
+
+int main1(){
+
+    printDeviceInfo();
+
     int targetSize = 4096;
     BYTE* data = (BYTE*)malloc(targetSize * targetSize);
     //cudaMallocHost(&data, targetSize * targetSize);
@@ -344,9 +382,8 @@ int main1() {
     memset(data, memSetValue,  1024 * 1024 / 4);
     memset(originData, memSetValue, targetSize * targetSize / 4);
     Init(8, 16, targetSize, 2);
-    for (int i = 0; i < 65535; i++) {
+    for (int i = 0; i < 512; i++) {
         Downsample(data, originData, targetSize, 2);
-     
     }
     Close();
     for (int i = 0; i < 64; i++) {
