@@ -334,25 +334,6 @@ extern "C" {
         return cudaSuccess;
     }
 
-    DLLEXPORT void* AllocMem(size_t size) {
-        BYTE* ptr = (BYTE*) malloc(size);
-        //cudaMallocManaged<BYTE>(&ptr, size);
-        return ptr;
-
-    }
-
-    DLLEXPORT void* ReallocMem(void* ptr, size_t size) {
-        BYTE* ptr1 = (BYTE*)realloc(ptr, size);
-        return ptr1;
-    }
-
-    DLLEXPORT void FreeMem(void* ptr) {
-        free(ptr);
-    }
-
-    DLLEXPORT BYTE* GetSubArray(BYTE* ptr, INT64 start, INT64 length) {
-        return ptr + start;
-    }
 
 }
 
