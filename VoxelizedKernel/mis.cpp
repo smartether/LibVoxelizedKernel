@@ -29,6 +29,5 @@ extern "C" {
         return ptr + start;
     }
 
-
 }
 
