@@ -7,7 +7,7 @@
 #define _DEPTH_TO_LIT_SHADOW_KERNEL_H_
 
 __device__ const float4 kDecodeDot = { 1.0f, 1.0f / 255.0f, 1.0f / 65025.0f, 1.0f / 16581375.0f };
-
+/*
 __device__ __forceinline__ float DotAsm(float4 l, float4 r) {
 	float d;
 	asm("{\n\t"
@@ -23,6 +23,7 @@ __device__ __forceinline__ float DotAsm(float4 l, float4 r) {
 	
 	return 0.0f;
 }
+*/
 
 __device__ __forceinline__ float Dot(float4 l, float4 r) {
     float lenL = sqrtf(l.x * l.x + l.y * l.y + l.z * l.z + l.w * l.w);
