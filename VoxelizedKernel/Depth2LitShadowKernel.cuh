@@ -1,15 +1,32 @@
 
 
 #include "common.h"
+#include <crt/math_functions.h>
 
 #ifndef _DEPTH_TO_LIT_SHADOW_KERNEL_H_
 #define _DEPTH_TO_LIT_SHADOW_KERNEL_H_
 
 __device__ const float4 kDecodeDot = { 1.0f, 1.0f / 255.0f, 1.0f / 65025.0f, 1.0f / 16581375.0f };
 
+__device__ __forceinline__ float DotAsm(float4 l, float4 r) {
+	float d;
+	asm("{\n\t"
+		".reg .f32 lenL; \n\t"
+		".reg .f32 lenR; \n\t"
+		".reg .f32 mulD; \n\t"
+		"mul.wide.f32 lenL, %1, %1; \n\t"
+		"mad.wide.f32 lenL, %2, %2, lenL; \n\t"
+		"mad.wide.f32 lenL, %3, %3, lenL; \n\t"
+		"mad.wide.f32 lenL, %4, %4, lenL;"
+		"}" : "=r"(d) : "r"(l.x) : "r"(l.y) : "r"(l.z) : "r"(l.w) : "r"(r.x) : "r"(r.x) : "r"(r.x) : "r"(r.x));
+		// l.x	l.y	l.z	l.w	r.x r.y r.z r.w
+	
+	return 0.0f;
+}
+
 __device__ __forceinline__ float Dot(float4 l, float4 r) {
-    float lenL = sqrt(l.x * l.x + l.y * l.y + l.z * l.z + l.w * l.w);
-    float lenR = sqrt(r.x * r.x + r.y * r.y + r.z * r.z + l.w * l.w);
+    float lenL = sqrtf(l.x * l.x + l.y * l.y + l.z * l.z + l.w * l.w);
+    float lenR = sqrtf(r.x * r.x + r.y * r.y + r.z * r.z + l.w * l.w);
     float cosRL = (l.x * r.x + l.y * r.y + l.z * r.z + l.w * r.w) / (lenR * lenL);
     float dotValue1 = lenL * lenR * cosRL;
     return dotValue1;
@@ -32,11 +49,8 @@ __global__ void Depth2LitShadowKernel(unsigned char* g_data, unsigned int* g_dat
     bool isShadow = true;
     bool isIntersected = true;
     int originSize = size * scaler;
-    //float4 kDecodeDot = { 1.0f, 1.0f / 255.0f, 1.0f / 65025.0f, 1.0f / 16581375.0f };
-    //kDecodeDot.x = 1.0f;
-    //kDecodeDot.y = 1 / 255.0f;
-    //kDecodeDot.z = 1 / 65025.0f;
-    //kDecodeDot.w = 1 / 16581375.0f;
+
+    //float depthAvg = 0;
     for (int v = 0; v < scaler; v++) {
         for (int u = 0; u < scaler; u++) {
             int vSrc = ySrc + v;
@@ -44,24 +58,22 @@ __global__ void Depth2LitShadowKernel(unsigned char* g_data, unsigned int* g_dat
             int indexSrc = vSrc * originSize + uSrc;
             unsigned char* src = (unsigned char*)(g_dataSrc + indexSrc);
             // BYTE* srcChannel = (BYTE*)src;
-            float4 rgba;
-            rgba.x = src[0] * 0.00392156f;
-            rgba.y = src[1] * 0.00392156f;
-            rgba.z = src[2] * 0.00392156f;
-            rgba.w = src[3] * 0.00392156f;
+            float4 rgba = { src[0] * 0.00392156f, src[1] * 0.00392156f, src[2] * 0.00392156f,src[3] * 0.00392156f };
 
             float depth = Dot(rgba, kDecodeDot);
-
-            isLit &= depth > frontDepth;
-            isShadow &= depth < backDepth;
-            //isIntersected &= depth >= backDepth && depth <= frontDepth;
+            //depthAvg += depth;
+			isShadow &= depth > frontDepth;
+			isLit &= depth < backDepth;
+			//isIntersected &= depth >= backDepth && depth <= frontDepth;
         }
     }
     isIntersected = !isLit & !isShadow;
-    if ((perferShadow && !isShadow) || (!perferShadow && !isLit))
-    {
-        g_data[index] = isIntersected ? 128 : 0;
-    }
+    g_data[index] =(unsigned char)( isIntersected ? 128 : (isLit ? 255 : 0));
+    
+    //if ((perferShadow && !isShadow) || (!perferShadow && !isLit))
+    //{
+    //    g_data[index] = isIntersected ? 128 : (perferShadow? 255 : 0);
+    //}
 
 
 }
