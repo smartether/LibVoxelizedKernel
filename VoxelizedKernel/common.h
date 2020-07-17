@@ -136,10 +136,12 @@ extern "C" {
             auto value = *i;
             cudaFree(value);
         }
+        delete poolTarget;
         for (auto i = poolOrigin->begin(), c = poolOrigin->end(); i != c; i++) {
             auto value = *i;
             cudaFree(value);
         }
+        delete poolOrigin;
     }
 
 }

@@ -5,6 +5,8 @@
 #ifndef _DEPTH_TO_LIT_SHADOW_KERNEL_H_
 #define _DEPTH_TO_LIT_SHADOW_KERNEL_H_
 
+__device__ const float4 kDecodeDot = { 1.0f, 1.0f / 255.0f, 1.0f / 65025.0f, 1.0f / 16581375.0f };
+
 __device__ __forceinline__ float Dot(float4 l, float4 r) {
     float lenL = sqrt(l.x * l.x + l.y * l.y + l.z * l.z + l.w * l.w);
     float lenR = sqrt(r.x * r.x + r.y * r.y + r.z * r.z + l.w * l.w);
@@ -15,21 +17,12 @@ __device__ __forceinline__ float Dot(float4 l, float4 r) {
 
 __device__ __forceinline__ float DecodeFloatRGBA(float4 enc)
 {
-    float4 kDecodeDot = float4();
-    kDecodeDot.x = 1.0f;
-    kDecodeDot.y = 1 / 255.0f;
-    kDecodeDot.z = 1 / 65025.0f;
-    kDecodeDot.w = 1 / 16581375.0f;
-
-    float depth = enc.x * kDecodeDot.x +
-        enc.y * kDecodeDot.y +
-        enc.z * kDecodeDot.z +
-        enc.w * kDecodeDot.w;
+    float depth = Dot(enc, kDecodeDot);
     return depth;
 }
 
 // scaler = 8192 / 4096  1BYTE/Voxel  ultra: 2Bit / Voxel
-__global__ void Depth2LitShadowKernel(unsigned char* g_data, unsigned int* g_dataSrc, float frontDepth, float backDepth, unsigned int size, unsigned int scaler) {
+__global__ void Depth2LitShadowKernel(unsigned char* g_data, unsigned int* g_dataSrc, float frontDepth, float backDepth, unsigned int size, unsigned int scaler, bool perferShadow) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     int index = y * size + x;
@@ -39,11 +32,11 @@ __global__ void Depth2LitShadowKernel(unsigned char* g_data, unsigned int* g_dat
     bool isShadow = true;
     bool isIntersected = true;
     int originSize = size * scaler;
-    float4 kDecodeDot = float4();
-    kDecodeDot.x = 1.0f;
-    kDecodeDot.y = 1 / 255.0f;
-    kDecodeDot.z = 1 / 65025.0f;
-    kDecodeDot.w = 1 / 16581375.0f;
+    //float4 kDecodeDot = { 1.0f, 1.0f / 255.0f, 1.0f / 65025.0f, 1.0f / 16581375.0f };
+    //kDecodeDot.x = 1.0f;
+    //kDecodeDot.y = 1 / 255.0f;
+    //kDecodeDot.z = 1 / 65025.0f;
+    //kDecodeDot.w = 1 / 16581375.0f;
     for (int v = 0; v < scaler; v++) {
         for (int u = 0; u < scaler; u++) {
             int vSrc = ySrc + v;
@@ -57,7 +50,7 @@ __global__ void Depth2LitShadowKernel(unsigned char* g_data, unsigned int* g_dat
             rgba.z = src[2] * 0.00392156f;
             rgba.w = src[3] * 0.00392156f;
 
-            float depth = 1;// Dot(rgba, kDecodeDot);
+            float depth = Dot(rgba, kDecodeDot);
 
             isLit &= depth > frontDepth;
             isShadow &= depth < backDepth;
@@ -65,16 +58,18 @@ __global__ void Depth2LitShadowKernel(unsigned char* g_data, unsigned int* g_dat
         }
     }
     isIntersected = !isLit & !isShadow;
-    if (!isLit)
+    if ((perferShadow && !isShadow) || (!perferShadow && !isLit))
     {
         g_data[index] = isIntersected ? 128 : 0;
     }
+
 
 }
 
 
 // scaler = 8192 / 4096  1BYTE/Voxel  ultra: 2Bit / Voxel
-__global__ void Depth2LitShadow8SlicePerBatchKernel(unsigned char* g_data, unsigned int* g_dataSrc, float frontDepth, float backDepth, unsigned int size, unsigned int scaler) {
+// perferShadow:assume most voxel is shadow(targetTex Default state is Shadow)
+__global__ void Depth2LitShadow8SlicePerBatchKernel(unsigned char* g_data, unsigned int* g_dataSrc, float frontDepth, float backDepth, unsigned int size, unsigned int scaler, bool perferShadow) {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -114,7 +109,7 @@ __global__ void Depth2LitShadow8SlicePerBatchKernel(unsigned char* g_data, unsig
 		}
 
 		isIntersected = !isLit & !isShadow;
-		if (!isLit)
+		if ((perferShadow && !isShadow) || (!perferShadow && !isLit))
 		{
 			g_data[index] = isIntersected ? 128 : 0;
 		}

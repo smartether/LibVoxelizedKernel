@@ -119,14 +119,17 @@ extern "C" {
     DLLEXPORT void BindDepthTex(BYTE* depthTex, unsigned int size, unsigned int scaler) {
         cudaSetDevice(0);
         cudaMalloc<BYTE>(&gDev_depthTex, size * size * scaler * scaler * 4);
+        cudaMemcpy(gDev_depthTex, depthTex, size * size * scaler * scaler * 4, cudaMemcpyKind::cudaMemcpyHostToDevice);
+
     }
 
     DLLEXPORT void ReleaseDepth2LitShadowProceduce() {
         cudaFree(gDev_depthTex);
+        gDev_depthTex = nullptr;
     }
 
     // size:texture width
-    DLLEXPORT cudaError_t Depth2LitShadowMinBatch(unsigned char* g_data, unsigned int* g_dataSrc, float frontDepth, float backDepth, unsigned int size, unsigned int scaler) {
+    DLLEXPORT cudaError_t Depth2LitShadowMinBatch(unsigned char* g_data, unsigned int* g_dataSrc, float frontDepth, float backDepth, unsigned int size, unsigned int scaler, bool perferShadow) {
         BYTE* dev_depthTex;
         BYTE* dev_litShadowTex;
         cudaError_t cudaStatus;
@@ -169,10 +172,14 @@ extern "C" {
         sdkStartTimer(&timer);
         cudaEventRecord(start, streamId);
 
-        cudaStatus = cudaMemcpyAsync(dev_depthTex, g_dataSrc, size * 4, cudaMemcpyKind::cudaMemcpyHostToDevice, streamId);
+        if(perferShadow)
+            cudaMemsetAsync(dev_litShadowTex, 0, size * size, streamId);
+        else
+            cudaMemsetAsync(dev_litShadowTex, 255, size * size, streamId);
+        //cudaStatus = cudaMemcpyAsync(dev_depthTex, g_dataSrc, size * 4, cudaMemcpyKind::cudaMemcpyHostToDevice, streamId);
 
         CHECK_ERR(cudaStatus);
-        Depth2LitShadowKernel << <blocks, threads, 0, streamId >> > (dev_litShadowTex, dev_depthTex, frontDepth, backDepth, size, scaler);
+        Depth2LitShadowKernel << <blocks, threads, 0, streamId >> > (dev_litShadowTex, (unsigned int*)dev_depthTex, frontDepth, backDepth, size, scaler, perferShadow);
         CHECK_ERR(cudaStatus);
 
         cudaStatus = cudaMemcpyAsync(g_data, dev_litShadowTex, size * size, cudaMemcpyKind::cudaMemcpyDeviceToHost, streamId);

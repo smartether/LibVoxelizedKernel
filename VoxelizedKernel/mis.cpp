@@ -29,5 +29,8 @@ extern "C" {
         return ptr + start;
     }
 
+    DLLEXPORT void MEMSET(char* ptr, char value, long lenght) {
+        memset(ptr, 255, lenght);
+    }
 }
 
