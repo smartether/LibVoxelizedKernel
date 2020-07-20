@@ -7,23 +7,20 @@
 #define _DEPTH_TO_LIT_SHADOW_KERNEL_H_
 
 __device__ const float4 kDecodeDot = { 1.0f, 1.0f / 255.0f, 1.0f / 65025.0f, 1.0f / 16581375.0f };
-/*
-__device__ __forceinline__ float DotAsm(float4 l, float4 r) {
-	float d;
-	asm("{\n\t"
-		".reg .f32 lenL; \n\t"
+
+__device__  float DotAsm(float4 l, float4 r) {
+	float d = 0;
+	asm(".reg .f32 lenL; \n\t"
 		".reg .f32 lenR; \n\t"
 		".reg .f32 mulD; \n\t"
-		"mul.wide.f32 lenL, %1, %1; \n\t"
-		"mad.wide.f32 lenL, %2, %2, lenL; \n\t"
-		"mad.wide.f32 lenL, %3, %3, lenL; \n\t"
-		"mad.wide.f32 lenL, %4, %4, lenL;"
-		"}" : "=r"(d) : "r"(l.x) : "r"(l.y) : "r"(l.z) : "r"(l.w) : "r"(r.x) : "r"(r.x) : "r"(r.x) : "r"(r.x));
-		// l.x	l.y	l.z	l.w	r.x r.y r.z r.w
+		"mad.rn.f32 lenR, %1, %1, lenL; \n\t"
+		"mad.rn.f32 lenL, %2, %2, lenR;\n\t"
+		"mad.rn.f32 lenR, %3, %3, lenL;\n\t"
+		"mad.rn.f32 lenL, %4, %4, lenR;"
+		: "=f"(d) : "f"(l.x) , "f"(l.y) , "f"(l.z) , "f"(l.w) , "f"(r.x) , "f"(r.x) , "f"(r.x) , "f"(r.x));
 	
-	return 0.0f;
+	return d;
 }
-*/
 
 __device__ __forceinline__ float Dot(float4 l, float4 r) {
     float lenL = sqrtf(l.x * l.x + l.y * l.y + l.z * l.z + l.w * l.w);
@@ -69,12 +66,13 @@ __global__ void Depth2LitShadowKernel(unsigned char* g_data, unsigned int* g_dat
         }
     }
     isIntersected = !isLit & !isShadow;
-    g_data[index] =(unsigned char)( isIntersected ? 128 : (isLit ? 255 : 0));
+
+	/*g_data[index] = (unsigned char)(isIntersected ? 128 : (isLit ? 255 : 0));*/
     
-    //if ((perferShadow && !isShadow) || (!perferShadow && !isLit))
-    //{
-    //    g_data[index] = isIntersected ? 128 : (perferShadow? 255 : 0);
-    //}
+    if ((perferShadow && !isShadow) || (!perferShadow && !isLit))
+    {
+        g_data[index] = (unsigned char)(isIntersected ? 128 : (perferShadow? 255 : 0));
+    }
 
 
 }
