@@ -13,10 +13,19 @@ __device__  float DotAsm(float4 l, float4 r) {
 	asm(".reg .f32 lenL; \n\t"
 		".reg .f32 lenR; \n\t"
 		".reg .f32 mulD; \n\t"
-		"mad.rn.f32 lenR, %1, %1, lenL; \n\t"
-		"mad.rn.f32 lenL, %2, %2, lenR;\n\t"
-		"mad.rn.f32 lenR, %3, %3, lenL;\n\t"
-		"mad.rn.f32 lenL, %4, %4, lenR;"
+		"mad.rn.f32 lenL, %1, %1, lenL; \n\t"
+		"mad.rn.f32 lenL, %2, %2, lenL;\n\t"
+		"mad.rn.f32 lenL, %3, %3, lenL;\n\t"
+		"mad.rn.f32 lenL, %4, %4, lenL;\n\t"
+		"mad.rn.f32 lenR, %5, %5, lenR;\n\t"
+		"mad.rn.f32 lenR, %6, %6, lenR;\n\t"
+		"mad.rn.f32 lenR, %7, %7, lenR;\n\t"
+		"mad.rn.f32 lenR, %8, %8, lenR;\n\t"
+		"mad.rn.f32 lenR, %1, %5, lenR;\n\t"
+		"mad.rn.f32 lenR, %2, %6, lenR;\n\t"
+		"mad.rn.f32 lenR, %3, %7, lenR;\n\t"
+		"mad.rn.f32 lenR, %4, %8, lenR;\n\t"
+		"mul.rn.f32 lenL, lenL, lenR;"
 		: "=f"(d) : "f"(l.x) , "f"(l.y) , "f"(l.z) , "f"(l.w) , "f"(r.x) , "f"(r.x) , "f"(r.x) , "f"(r.x));
 	
 	return d;
