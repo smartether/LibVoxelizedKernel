@@ -106,6 +106,11 @@ BYTE* getOriginBuffer(BYTE** ptr) {
 }
 
 
+typedef struct {
+    unsigned short litEndVoxelId;
+    unsigned short shadowStartVoxelId;
+}CompressedLitInfo;
+
 extern "C" {
 
     DLLEXPORT void Init(unsigned int targetBufferPoolSize, unsigned int originBufferPoolSize, unsigned int targetSize, unsigned int scaler = SCALER, unsigned int threadNum = 16) {

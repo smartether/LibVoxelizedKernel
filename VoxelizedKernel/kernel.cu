@@ -3,8 +3,11 @@
 
 #include "MyCudaDefine.cuh"
 #include "Depth2LitShadowKernel.cuh"
+#include "LitShadowDistributionKernel.cuh"
 
 static BYTE* gDev_depthTex = nullptr;
+
+static BYTE* gDev_distributionTex = nullptr;
 
 extern "C" {
  
@@ -123,6 +126,17 @@ extern "C" {
 
     }
 
+    DLLEXPORT void BindDistributionTex(unsigned char* distTex, unsigned int size, unsigned int scaler) {
+        cudaSetDevice(0);
+        cudaMalloc<unsigned char>(&gDev_distributionTex, size * size * scaler * scaler * 4);
+        cudaMemcpy(gDev_distributionTex, distTex, size * size * scaler * scaler * 4, cudaMemcpyKind::cudaMemcpyHostToDevice);
+    }
+
+    DLLEXPORT void ReleaseDistributionTex() {
+        cudaFree(gDev_distributionTex);
+        gDev_distributionTex = nullptr;
+    }
+
     DLLEXPORT void ReleaseDepth2LitShadowProceduce() {
         cudaFree(gDev_depthTex);
         gDev_depthTex = nullptr;
@@ -217,7 +231,93 @@ extern "C" {
         return cudaError::cudaSuccess;
     }
 
-  
+    DLLEXPORT cudaError_t ConvertDistributionTex2LitShadowInfo(int targetVoxelSize, int originVoxelSize, int dBlockIndex, byte* targetLitShadowInfoArray,
+        CompressedLitInfo* originLitShadowInfoArray, int kernelSize = 2) {
+        unsigned char* dev_distributionTex;
+        unsigned char* dev_litShadowTex;
+        cudaError_t cudaStatus;
+        cudaStatus = cudaSetDevice(0);
+        CHECK_ERR(cudaStatus);
+        if (gDev_distributionTex == nullptr) {
+            BindDistributionTex((unsigned char*)originLitShadowInfoArray, targetVoxelSize, kernelSize);
+        }
+        dev_distributionTex = gDev_distributionTex;
+        if (memPoolEnabled) {
+            //while (!hasTargetBuff())
+            //    Sleep(30);
+            //getTargetBuffer(&dev_depthTex);
+            while (!hasOriginBuff())
+                Sleep(30);
+            getOriginBuffer(&dev_litShadowTex);
+        }
+        else {
+            //cudaStatus = cudaMalloc<BYTE>(&dev_depthTex, size * size * scaler * scaler * 4);
+            //CHECK_ERR(cudaStatus);
+            cudaStatus = cudaMalloc<unsigned char>(&dev_litShadowTex, targetVoxelSize * targetVoxelSize);
+            CHECK_ERR(cudaStatus);
+        }
+        unsigned int threadNum = min(nThreadNum, targetVoxelSize);
+        dim3 threads = dim3(threadNum, threadNum);
+        dim3 blocks = dim3(targetVoxelSize / threads.x, targetVoxelSize / threads.y);
+        cudaEvent_t start, stop;
+        CHECK_ERR(cudaEventCreate(&start));
+        CHECK_ERR(cudaEventCreate(&stop));
+
+        cudaStream_t streamId;
+        cudaStreamCreate(&streamId);
+
+        StopWatchInterface* timer = NULL;
+        sdkCreateTimer(&timer);
+        sdkResetTimer(&timer);
+        checkCudaErrors(cudaDeviceSynchronize());
+        float gpu_time = 0.0f;
+        // asynchronously issue work to the GPU (all to stream 0)
+        sdkStartTimer(&timer);
+        cudaEventRecord(start, streamId);
+
+
+        CHECK_ERR(cudaStatus);
+        //for (int dblockIdx = 0; dblockIdx < targetVoxelSize; dblockIdx++) {
+            LitShadowDistributionKernel <<<blocks, threads, 0, streamId>>> (targetVoxelSize, originVoxelSize, dBlockIndex, dev_litShadowTex, (CompressedLitInfo*) dev_distributionTex, kernelSize);
+        //}
+        CHECK_ERR(cudaStatus);
+
+        cudaStatus = cudaMemcpyAsync(targetLitShadowInfoArray, dev_litShadowTex, targetVoxelSize* targetVoxelSize, cudaMemcpyKind::cudaMemcpyDeviceToHost, streamId);
+
+        CHECK_ERR(cudaStatus);
+        cudaEventRecord(stop, streamId);
+        sdkStopTimer(&timer);
+        cudaError_t ev;
+        while ((ev = cudaStreamQuery(streamId)) != cudaSuccess) {
+            
+        }
+        cudaStreamDestroy(streamId);
+        checkCudaErrors(cudaEventElapsedTime(&gpu_time, start, stop));
+
+        // release resources
+        checkCudaErrors(cudaEventDestroy(start));
+        checkCudaErrors(cudaEventDestroy(stop));
+
+        if (memPoolEnabled) {
+            //reclaimTargetBuffer(&dev_depthTex);
+            reclaimOriginBuffer(&dev_litShadowTex);
+        }
+        else {
+            //cudaFree(dev_depthTex);
+            cudaFree(dev_litShadowTex);
+        }
+    Error:
+        if (memPoolEnabled) {
+            //reclaimTargetBuffer(&dev_depthTex);
+            reclaimOriginBuffer(&dev_litShadowTex);
+        }
+        else {
+            //cudaFree(dev_depthTex);
+            cudaFree(dev_litShadowTex);
+        }
+        return cudaError::cudaSuccess;
+    }
+
     DLLEXPORT cudaError_t StripRedundancyInfo() {
         
         return cudaSuccess;

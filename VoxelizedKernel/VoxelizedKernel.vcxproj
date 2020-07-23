@@ -63,6 +63,7 @@
       <Include>$(CUDA_PATH)\common\inc;..\common\inc;$(ProjectDir);%(Include)</Include>
       <CodeGeneration>compute_60,sm_60;compute_61,sm_61;compute_70,sm_70;compute_75,sm_75;%(CodeGeneration)</CodeGeneration>
       <Defines>WIN32</Defines>
+      <CudaRuntime>Shared</CudaRuntime>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -85,6 +86,7 @@
       <Include>$(CUDA_PATH)\common\inc;..\common\inc;$(ProjectDir);%(Include)</Include>
       <CodeGeneration>compute_60,sm_60;compute_61,sm_61;compute_70,sm_70;compute_75,sm_75;%(CodeGeneration)</CodeGeneration>
       <Defines>WIN32</Defines>
+      <CudaRuntime>Shared</CudaRuntime>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -98,6 +100,7 @@
   <ItemGroup>
     <ClInclude Include="common.h" />
     <ClInclude Include="Depth2LitShadowKernel.cuh" />
+    <ClInclude Include="LitShadowDistributionKernel.cuh" />
     <ClInclude Include="MyCudaDefine.cuh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
