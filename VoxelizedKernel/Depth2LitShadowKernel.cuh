@@ -12,7 +12,11 @@ __device__  float DotAsm(float4 l, float4 r) {
 	float d = 0;
 	asm(".reg .f32 lenL; \n\t"
 		".reg .f32 lenR; \n\t"
+		".reg .f32 cosRL; \n\t"
 		".reg .f32 mulD; \n\t"
+		"mov.f32 lenL, 0.0; \n\t"
+		"mov.f32 lenR, 0.0; \n\t"
+		"mov.f32 cosRL, 0.0; \n\t"
 		"mad.rn.f32 lenL, %1, %1, lenL; \n\t"
 		"mad.rn.f32 lenL, %2, %2, lenL;\n\t"
 		"mad.rn.f32 lenL, %3, %3, lenL;\n\t"
@@ -21,22 +25,22 @@ __device__  float DotAsm(float4 l, float4 r) {
 		"mad.rn.f32 lenR, %6, %6, lenR;\n\t"
 		"mad.rn.f32 lenR, %7, %7, lenR;\n\t"
 		"mad.rn.f32 lenR, %8, %8, lenR;\n\t"
-		"mad.rn.f32 lenR, %1, %5, lenR;\n\t"
-		"mad.rn.f32 lenR, %2, %6, lenR;\n\t"
-		"mad.rn.f32 lenR, %3, %7, lenR;\n\t"
-		"mad.rn.f32 lenR, %4, %8, lenR;\n\t"
-		"mul.rn.f32 lenL, lenL, lenR;"
-		: "=f"(d) : "f"(l.x) , "f"(l.y) , "f"(l.z) , "f"(l.w) , "f"(r.x) , "f"(r.x) , "f"(r.x) , "f"(r.x));
+		"mad.rn.f32 cosRL, %1, %5, cosRL;\n\t"
+		"mad.rn.f32 cosRL, %2, %6, cosRL;\n\t"
+		"mad.rn.f32 cosRL, %3, %7, cosRL;\n\t"
+		"mad.rn.f32 cosRL, %4, %8, cosRL;\n\t"
+		"sqrt.approx.f32 lenL, lenL;\n\t"
+		"sqrt.approx.f32 lenR, lenR;\n\t"
+		"mul.rn.f32 lenL, lenL, lenR;\n\t"
+		"div.rn.f32 cosRL, cosRL, lenL;\n\t"
+		"mul.rn.f32 %0, cosRL, lenL;"
+		: "=f"(d) : "f"(l.x) , "f"(l.y) , "f"(l.z) , "f"(l.w) , "f"(r.x) , "f"(r.y) , "f"(r.z) , "f"(r.w));
 	
 	return d;
 }
 
 __device__ __forceinline__ float Dot(float4 l, float4 r) {
-    float lenL = sqrtf(l.x * l.x + l.y * l.y + l.z * l.z + l.w * l.w);
-    float lenR = sqrtf(r.x * r.x + r.y * r.y + r.z * r.z + l.w * l.w);
-    float cosRL = (l.x * r.x + l.y * r.y + l.z * r.z + l.w * r.w) / (lenR * lenL);
-    float dotValue1 = lenL * lenR * cosRL;
-    return dotValue1;
+	return DotAsm(l, r);
 }
 
 __device__ __forceinline__ float DecodeFloatRGBA(float4 enc)
