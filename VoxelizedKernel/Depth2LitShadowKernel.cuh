@@ -39,8 +39,16 @@ __device__  float DotAsm(float4 l, float4 r) {
 	return d;
 }
 
+#include <nvMath.h>
 __device__ __forceinline__ float Dot(float4 l, float4 r) {
 	return DotAsm(l, r);
+	/*
+    float lenL = sqrtf(l.x * l.x + l.y * l.y + l.z * l.z + l.w * l.w);
+    float lenR = sqrtf(r.x * r.x + r.y * r.y + r.z * r.z + l.w * l.w);
+    float cosRL = (l.x * r.x + l.y * r.y + l.z * r.z + l.w * r.w) / (lenR * lenL);
+    float dotValue1 = lenL * lenR * cosRL;
+    return dotValue1;
+	*/
 }
 
 __device__ __forceinline__ float DecodeFloatRGBA(float4 enc)
